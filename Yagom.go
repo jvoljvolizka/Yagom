@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
@@ -14,8 +15,10 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -72,6 +75,27 @@ func parseRsaPublicKeyFromPemStr(pubPEM string) (*rsa.PublicKey, error) {
 	return nil, errors.New("Key type is not RSA")
 }
 
+func rsaEncrypt(publicKey *rsa.PublicKey, sourceText []byte, label string) (encryptedText []byte) {
+	var err error
+	var sha256Hash hash.Hash
+	sha256Hash = sha256.New()
+	if encryptedText, err = rsa.EncryptOAEP(sha256Hash, rand.Reader, publicKey, sourceText, []byte(label)); err != nil {
+		log.Fatal(err)
+	}
+	return
+}
+
+func rsaDecrypt(privateKey *rsa.PrivateKey, encryptedText []byte, label string) (decryptedText []byte) {
+	var err error
+	var sha256Hash hash.Hash
+	sha256Hash = sha256.New()
+	if decryptedText, err = rsa.DecryptOAEP(sha256Hash, rand.Reader, privateKey, encryptedText, []byte(label)); err != nil {
+		log.Fatal(err)
+		fmt.Println(err)
+	}
+	return
+}
+
 //***********RSA FUNCTIONS END
 
 //*****AES STUFF
@@ -123,12 +147,8 @@ func decrypt(data []byte, passphrase string, salt []byte) []byte {
 func createPass() (string, []byte) {
 	password := make([]byte, 64)
 	salt := make([]byte, 8)
-	/*
-
-
-	 */
 	if ultrasecurepassword {
-		//things that i did for just a stupid joke
+		//things that i do for just a stupid joke
 		response, err := http.Get("https://api.exchangeratesapi.io/latest?base=USD&symbols=USD,TRY")
 		if err != nil {
 			fmt.Println("The HTTP request failed fall back to sane salt creation", err)
@@ -139,7 +159,7 @@ func createPass() (string, []byte) {
 
 		} else {
 			type Tree struct {
-				Value map[string]float32 `json:"rates"`
+				Value map[string]float64 `json:"rates"`
 			}
 			data, _ := ioutil.ReadAll(response.Body)
 			fmt.Println(string(data))
@@ -151,9 +171,8 @@ func createPass() (string, []byte) {
 			if err != nil {
 				fmt.Println("binary.Write failed:", err)
 			}
+			salt = buf.Bytes() // okay seriously this is not safe if you are actually use this code for something important set ultrasecurepassword to false
 		}
-
-		/**/
 
 	} else {
 		_, err := rand.Read(salt)
@@ -233,6 +252,11 @@ func server(ConnHost, ConnPort string) {
 
 // Handles incoming requests.
 func serverreq(conn net.Conn) {
+	//struct for keeping and sending aes key
+	type aesKey struct {
+		password string
+		salt     []byte
+	}
 	exPublicKey := ""
 	for {
 		defer conn.Close()
@@ -257,12 +281,18 @@ func serverreq(conn net.Conn) {
 
 				if err != nil {
 					fmt.Println("pubkey error: ", err.Error())
-					os.Exit(1)
+					return
 				}
 				fmt.Println(*pubkey)
+
+				fmt.Println(exPublicKey)
+				var key aesKey
+				key.password, key.salt = createPass()
+				packet, _ := json.Marshal(key)
+				encpacket := rsaEncrypt(pubkey, packet, "")
+
+				conn.Write(encpacket)
 			}
-			fmt.Println(exPublicKey)
-			conn.Write([]byte("got it\n"))
 
 		}
 		fmt.Println(message)
@@ -275,6 +305,11 @@ func listendata(key string) {
 }
 
 func client(ConnHost, ConnPort string) {
+	type aesKey struct {
+		password string
+		salt     []byte
+	}
+
 	// Connect to the server.
 	c, err := net.Dial("tcp", ConnHost+":"+ConnPort)
 	if err != nil {
@@ -296,7 +331,7 @@ func client(ConnHost, ConnPort string) {
 	**/
 	keyStr := "dalyarak"
 	//use minimum 2048 for rsa
-	_, pubkey := generateRsaKeyPair(2048)
+	privkey, pubkey := generateRsaKeyPair(2048)
 
 	exClientPub, err := exportRsaPublicKeyAsPemStr(pubkey)
 
@@ -307,9 +342,20 @@ func client(ConnHost, ConnPort string) {
 
 	keyStr += exClientPub
 
-	fmt.Println(exClientPub)
+	//fmt.Println(exClientPub)
 	_, err = c.Write([]byte(keyStr))
 
+	buf := make([]byte, 1024)
+
+	len, _ := c.Read(buf)
+
+	marshKey := rsaDecrypt(privkey, buf[:len], "")
+
+	var key aesKey
+	json.Unmarshal(marshKey, &key)
+
+	fmt.Println(privkey)
+	fmt.Println(buf[:len])
 	if err != nil {
 		println("Write to server failed:", err.Error())
 		os.Exit(1)
