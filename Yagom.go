@@ -22,6 +22,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/akamensky/argparse"
 	"golang.org/x/crypto/pbkdf2"
@@ -31,6 +32,12 @@ const (
 	debug               = true //debug switch
 	ultrasecurepassword = true //if this is true create the salt value using turkish lira to dolar exchange rate
 )
+
+//struct for keeping and sending aes key
+type aesKey struct {
+	password string
+	salt     []byte
+}
 
 //**********RSA FUNCTIONS
 
@@ -248,11 +255,7 @@ func server(ConnHost, ConnPort string) {
 
 // Handles incoming requests.
 func serverreq(conn net.Conn) {
-	//struct for keeping and sending aes key
-	type aesKey struct {
-		password string
-		salt     []byte
-	}
+
 	exPublicKey := ""
 	for {
 		defer conn.Close()
@@ -287,12 +290,33 @@ func serverreq(conn net.Conn) {
 				if err != nil {
 					panic(err)
 				}
-				fmt.Println(key.salt)
-				fmt.Println(packet)
+				if debug {
+					fmt.Println(key.salt)
+					fmt.Println(packet)
+				}
 
 				encPacket := rsaEncrypt(pubkey, []byte(packet), "")
 
 				conn.Write(encPacket)
+
+				for {
+					buf = make([]byte, 1024)
+					len, err := conn.Read(buf)
+					if err != nil {
+						if err.Error() == "EOF" {
+							fmt.Println(conn.RemoteAddr().String() + " closed the connection")
+							conn.Close()
+							return
+						}
+						fmt.Println("Error reading:", err.Error())
+					}
+					message = string(buf[:len])
+					if message == "dalyarak" {
+						conn.Write(encrypt([]byte(listendata()), key.password, key.salt))
+					}
+
+				}
+
 			}
 
 		}
@@ -301,15 +325,11 @@ func serverreq(conn net.Conn) {
 }
 
 //this is the funtion that actually does the monitoring job
-func listendata(key string) {
-
+func listendata() string {
+	return "anan"
 }
 
 func client(ConnHost, ConnPort string) {
-	type aesKey struct {
-		password string
-		salt     []byte
-	}
 
 	// Connect to the server.
 	c, err := net.Dial("tcp", ConnHost+":"+ConnPort)
@@ -358,7 +378,22 @@ func client(ConnHost, ConnPort string) {
 	var keyStore aesKey
 	keyStore.password = string(aesKeys[:88])
 	keyStore.salt = aesKeys[88:]
-	fmt.Println(aesKeys[88:])
-	fmt.Println(string(aesKeys[:88]))
 
+	if debug {
+		fmt.Println(aesKeys[88:])
+		fmt.Println(string(aesKeys[:88]))
+	}
+
+	for {
+		time.Sleep(1 * time.Second)
+		c.Write([]byte("dalyarak"))
+		buf = make([]byte, 1024)
+		len, err = c.Read(buf)
+		if err != nil {
+			fmt.Println("read error : ", err)
+			return
+		}
+		fmt.Println(string(decrypt(buf[:len], keyStore.password, keyStore.salt)))
+
+	}
 }
