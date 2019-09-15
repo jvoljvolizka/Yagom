@@ -242,10 +242,6 @@ func server(ConnHost, ConnPort string) {
 		}
 		// Handle connections in a new goroutine.
 		go serverreq(conn)
-		/* this is wrong
-		if exPublicKey != "" {
-			go listendata(exPublicKey)
-		}*/
 
 	}
 }
@@ -283,19 +279,24 @@ func serverreq(conn net.Conn) {
 					fmt.Println("pubkey error: ", err.Error())
 					return
 				}
-				fmt.Println(*pubkey)
 
-				fmt.Println(exPublicKey)
 				var key aesKey
 				key.password, key.salt = createPass()
-				packet, _ := json.Marshal(key)
-				encpacket := rsaEncrypt(pubkey, packet, "")
+				packet := key.password + string(key.salt)
 
-				conn.Write(encpacket)
+				if err != nil {
+					panic(err)
+				}
+				fmt.Println(key.salt)
+				fmt.Println(packet)
+
+				encPacket := rsaEncrypt(pubkey, []byte(packet), "")
+
+				conn.Write(encPacket)
 			}
 
 		}
-		fmt.Println(message)
+
 	}
 }
 
@@ -322,7 +323,7 @@ func client(ConnHost, ConnPort string) {
 
 	//send pubkey for aes key exchange
 	/*handshake:
-	* client -> dalyarak + pubkey  -> server
+	* client -> dalyarak + pubkey -> server
 	* client <- dalyarak + encryptedAESkey <- server
 	******* handshake completed now client can send monitor request with just dalyarak command
 	* client -> dalyarak -> server
@@ -342,22 +343,22 @@ func client(ConnHost, ConnPort string) {
 
 	keyStr += exClientPub
 
-	//fmt.Println(exClientPub)
 	_, err = c.Write([]byte(keyStr))
+
+	if err != nil {
+		println("Write to server failed:", err.Error())
+		os.Exit(1)
+	}
 
 	buf := make([]byte, 1024)
 
 	len, _ := c.Read(buf)
 
-	marshKey := rsaDecrypt(privkey, buf[:len], "")
+	aesKeys := rsaDecrypt(privkey, buf[:len], "")
+	var keyStore aesKey
+	keyStore.password = string(aesKeys[:88])
+	keyStore.salt = aesKeys[88:]
+	fmt.Println(aesKeys[88:])
+	fmt.Println(string(aesKeys[:88]))
 
-	var key aesKey
-	json.Unmarshal(marshKey, &key)
-
-	fmt.Println(privkey)
-	fmt.Println(buf[:len])
-	if err != nil {
-		println("Write to server failed:", err.Error())
-		os.Exit(1)
-	}
 }
