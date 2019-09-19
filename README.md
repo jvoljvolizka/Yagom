@@ -6,10 +6,10 @@ It's simple stupid and unnecessary just like my life
 ### Todo
 _________________________________________________________________________________
 
-* Fix server side error handling _shouldn't be any panic in encryption/decryption functions_
-* Actually write some monitoring code _maybe with go-osstat?_
+* ~~Fix server side error handling _shouldn't be any panic in encryption/decryption functions_~~
+* ~~Actually write some monitoring code _maybe with go-osstat?_~~ wrote it with gopsutil
 * Tidy the code as multiple files
-* Write client front end code with tview library
+* Write client front end code with ~~tview~~ termui library
 * Write a better README file 
 * Don't kill yourself
 
