@@ -25,6 +25,10 @@ import (
 	"time"
 
 	"github.com/akamensky/argparse"
+	"github.com/shirou/gopsutil/cpu"
+	"github.com/shirou/gopsutil/disk"
+	"github.com/shirou/gopsutil/host"
+	"github.com/shirou/gopsutil/mem"
 	"golang.org/x/crypto/pbkdf2"
 )
 
@@ -37,6 +41,41 @@ const (
 type aesKey struct {
 	password string
 	salt     []byte
+}
+
+//struct for gathered info
+type infobundle struct {
+	//memory info
+	MemTotal    uint64  `json:"totmem"`
+	MemFree     uint64  `json:"freemem"`
+	MemUsed     uint64  `json:"usedmem"`
+	MemUsedPerc float64 `json:"usedmemperc"`
+	//storage info only one part for now
+	StoreTotal    uint64  `json:"totstore"`
+	StoreFree     uint64  `json:"freestore"`
+	StoreUsed     uint64  `json:"usedstore"`
+	StoreUsedPerc float64 `json:"usedstoreperc"`
+	//CPU info
+	CPUVendor  string    `json:"cpuvendor"`
+	CPUFamily  string    `json:"cpufamily"`
+	CPUCoreNum int32     `json:"cpucorenum"`
+	CPUModel   string    `json:"cpumodel"`
+	CPUSpeed   float64   `json:"cpuspeed"`
+	CPUPercent []float64 `json:"cpupercent"`
+	//Host info
+	HostOs      string `json:"hostos"`
+	HostDistro  string `json:"hostdist"`
+	HostID      string `json:"hostid"`
+	HostName    string `json:"hostname"`
+	HostUptime  uint64 `json:"hostuptime"`
+	HostProcNum uint64 `json:"hostprocnum"`
+	//network info needs more work
+	/*
+		NetIntName  string   `json:"netintname"`
+		NetIntMac   string   `json:"netintmac"`
+		NetIntFlags []string `json:"netintflags"`
+		NetIntAddr  []string `json:"netintaddr"`
+	*/
 }
 
 //**********RSA FUNCTIONS
@@ -326,7 +365,73 @@ func serverreq(conn net.Conn) {
 
 //this is the funtion that actually does the monitoring job
 func listendata() string {
-	return "anan"
+
+	var info infobundle
+
+	vmStat, err := mem.VirtualMemory()
+	if err != nil {
+		fmt.Println("datalisten error : ", err)
+	}
+
+	// disk - start from "/" mount point for Linux
+	// might have to change for Windows!!
+	// don't have a Window to test this out, if detect OS == windows
+	// then use "\" instead of "/"
+
+	diskStat, err := disk.Usage("/")
+	if err != nil {
+		fmt.Println("datalisten error : ", err)
+	}
+
+	// cpu - get CPU number of cores and speed
+	cpuStat, err := cpu.Info()
+	if err != nil {
+		fmt.Println("datalisten error : ", err)
+	}
+	percentage, err := cpu.Percent(0, true)
+	if err != nil {
+		fmt.Println("datalisten error : ", err)
+	}
+
+	// host or machine kernel, uptime, platform Info
+	hostStat, err := host.Info()
+	if err != nil {
+		fmt.Println("datalisten error : ", err)
+	}
+	/*
+		// get interfaces MAC/hardware address
+		interfStat, err := net.Interfaces()
+		if err != nil {
+			fmt.Println("datalisten error : ", err)
+		}*/
+	//populate struct
+
+	info.MemTotal = vmStat.Total
+	info.MemFree = vmStat.Free
+	info.MemUsed = vmStat.Used
+	info.MemUsedPerc = vmStat.UsedPercent
+
+	info.StoreTotal = diskStat.Total
+	info.StoreFree = diskStat.Free
+	info.StoreUsed = diskStat.Used
+	info.StoreUsedPerc = diskStat.UsedPercent
+
+	info.CPUVendor = cpuStat[0].VendorID
+	info.CPUFamily = cpuStat[0].Family
+	info.CPUCoreNum = cpuStat[0].Cores
+	info.CPUModel = cpuStat[0].ModelName
+	info.CPUSpeed = cpuStat[0].Mhz
+	info.CPUPercent = percentage
+
+	info.HostID = hostStat.HostID
+	info.HostDistro = hostStat.Platform
+	info.HostOs = hostStat.OS
+	info.HostName = hostStat.Hostname
+	info.HostUptime = hostStat.Uptime
+	info.HostProcNum = hostStat.Procs
+
+	jsondata, _ := json.Marshal(info)
+	return string(jsondata)
 }
 
 func client(ConnHost, ConnPort string) {
@@ -383,7 +488,7 @@ func client(ConnHost, ConnPort string) {
 		fmt.Println(aesKeys[88:])
 		fmt.Println(string(aesKeys[:88]))
 	}
-
+	//yagom.CpuDraw()
 	for {
 		time.Sleep(1 * time.Second)
 		c.Write([]byte("dalyarak"))
