@@ -29,6 +29,7 @@ import (
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/host"
 	"github.com/shirou/gopsutil/mem"
+	netst "github.com/shirou/gopsutil/net"
 	"golang.org/x/crypto/pbkdf2"
 )
 
@@ -70,12 +71,14 @@ type infobundle struct {
 	HostUptime  uint64 `json:"hostuptime"`
 	HostProcNum uint64 `json:"hostprocnum"`
 	//network info needs more work
-	/*
-		NetIntName  string   `json:"netintname"`
-		NetIntMac   string   `json:"netintmac"`
-		NetIntFlags []string `json:"netintflags"`
-		NetIntAddr  []string `json:"netintaddr"`
-	*/
+	NetInts []interInfo `json:"netinters"`
+}
+
+type interInfo struct {
+	NetIntName  string   `json:"netintname"`
+	NetIntMac   string   `json:"netintmac"`
+	NetIntFlags []string `json:"netintflags"`
+	NetIntAddr  []string `json:"netintaddr"`
 }
 
 //**********RSA FUNCTIONS
@@ -256,7 +259,8 @@ func main() {
 	//assign host and ip
 	ConnHost := *hostip
 	ConnPort := *port
-	if debug {
+	if debug && ConnHost == "" {
+
 		ConnHost = "127.0.0.1" //*hostip
 		ConnPort = "4200"      //*port
 	}
@@ -398,12 +402,28 @@ func listendata() string {
 	if err != nil {
 		fmt.Println("datalisten error : ", err)
 	}
-	/*
-		// get interfaces MAC/hardware address
-		interfStat, err := net.Interfaces()
-		if err != nil {
-			fmt.Println("datalisten error : ", err)
-		}*/
+
+	// get interfaces MAC/hardware address
+	interfStat, err := netst.Interfaces()
+	if err != nil {
+		fmt.Println("datalisten error : ", err)
+	}
+
+	intnum := len(interfStat)
+
+	info.NetInts = make([]interInfo, intnum)
+	for ind, interf := range interfStat {
+		info.NetInts[ind].NetIntName = interf.Name
+		info.NetInts[ind].NetIntMac = interf.HardwareAddr
+		info.NetInts[ind].NetIntFlags = interf.Flags
+
+		for _, addr := range interf.Addrs {
+			info.NetInts[ind].NetIntAddr = append(info.NetInts[ind].NetIntAddr, addr.String())
+
+		}
+
+	}
+
 	//populate struct
 
 	info.MemTotal = vmStat.Total
@@ -431,6 +451,10 @@ func listendata() string {
 	info.HostProcNum = hostStat.Procs
 
 	jsondata, _ := json.Marshal(info)
+	if debug {
+		fmt.Println(string(jsondata))
+	}
+
 	return string(jsondata)
 }
 
@@ -492,13 +516,15 @@ func client(ConnHost, ConnPort string) {
 	for {
 		time.Sleep(1 * time.Second)
 		c.Write([]byte("dalyarak"))
-		buf = make([]byte, 1024)
+		buf = make([]byte, 2048)
 		len, err = c.Read(buf)
 		if err != nil {
 			fmt.Println("read error : ", err)
 			return
 		}
-		fmt.Println(string(decrypt(buf[:len], keyStore.password, keyStore.salt)))
+		if debug {
+			fmt.Println(string(decrypt(buf[:len], keyStore.password, keyStore.salt)))
+		}
 
 	}
 }
