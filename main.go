@@ -71,6 +71,7 @@ func main() {
 	clientmode := parser.Flag("c", "client", &argparse.Options{Required: false, Help: "Start as client"})
 	hostip := parser.String("i", "ip", &argparse.Options{Required: true, Help: "Host ip"})
 	port := parser.String("p", "port", &argparse.Options{Required: true, Help: "Connection port"})
+	//key := parser.String("f", "keyfile", &argparse.Options{Required: false, Help: "Use ssh key (public for servermode private for clientmode)"})
 	// Parse input
 	err := parser.Parse(os.Args)
 	if err != nil {
