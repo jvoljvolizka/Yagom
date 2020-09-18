@@ -6,9 +6,9 @@ import (
 	"net"
 	"os"
 	"time"
-	"yagom"
 
 	"github.com/akamensky/argparse"
+	yagom "github.com/jvoljvolizka/Yagom/src"
 	"github.com/shirou/gopsutil/cpu"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/shirou/gopsutil/host"
